@@ -47,4 +47,19 @@ impl Vault {
     pub fn list_entries(&self) -> &Vec<Entry> {
         &self.entries
     }
+    
+    // Добавляем метод удаления
+    pub fn remove_entry(&mut self, index: usize) -> Option<Entry> {
+        if index < self.entries.len() {
+            Some(self.entries.remove(index))
+        } else {
+            None
+        }
+    }
+    
+    // Поиск записи по имени
+    pub fn find_entry_by_name(&self, name: &str) -> Option<(usize, &Entry)> {
+        self.entries.iter().enumerate()
+            .find(|(_, entry)| entry.name == name)
+    }
 }

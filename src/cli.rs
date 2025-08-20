@@ -40,4 +40,14 @@ pub enum Commands {
         #[arg(short, long)]
         secure: bool,
     },
+    /// Копировать пароль в буфер обмена
+    Copy {
+        /// Название сервиса или номер записи
+        name_or_index: String,
+    },
+    /// Удалить запись
+    Remove {
+        /// Название сервиса или номер записи
+        name_or_index: String,
+    },
 }

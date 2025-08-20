@@ -14,3 +14,4 @@ zeroize = "1.6"
 clap = { version = "4.0", features = ["derive"] }
 rpassword = "7.2"
 bincode = "1.3"
+clipboard = "0.5"
