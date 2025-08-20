@@ -3,6 +3,7 @@ mod vault;
 mod entry;
 mod cli;
 mod password_generator;
+mod session;
 
 use cli::{Cli, Commands};
 use entry::Entry;
@@ -13,12 +14,21 @@ use clap::Parser;
 use password_generator::{generate_password, generate_secure_password};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use std::fs::File;
-use std::io::{Write, BufReader, BufRead};
+use std::io::{BufReader, BufRead};
+use session::SessionManager;
 
 const VAULT_FILE: &str = "data\\vault.enc";
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
+    
+    // Проверяем автоблокировку перед выполнением команд
+    if !matches!(cli.command, Commands::Unlock | Commands::Init | Commands::LockConfig { .. }) {
+        if SessionManager::is_locked() {
+            println!("🔒 Сессия заблокирована. Используйте 'hiho unlock' для разблокировки.");
+            return Ok(());
+        }
+    }
     
     match &cli.command {
         Commands::Init => {
@@ -155,8 +165,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("🔍 Ничего не найдено по запросу '{}'", query);
             } else {
                 println!("🔍 Найдено {} записей:", results.len());
-                for (i, (index, entry)) in results.iter().enumerate() {
-                    println!("{}. {}: {} - {}", i+1, entry.name, entry.username, entry.password);
+                for (_i, (_index, entry)) in results.iter().enumerate() {
+                    println!("{}. {}: {} - {}", _i+1, entry.name, entry.username, entry.password);
                 }
             }
         }
@@ -296,6 +306,66 @@ fn main() -> Result<(), Box<dyn Error>> {
                 _ => {
                     println!("❌ Неподдерживаемый формат: {}", format);
                 }
+            }
+        }
+        
+        Commands::LockConfig { timeout, show } => {
+            if *show {
+                // Показать текущую конфигурацию
+                if Path::new(VAULT_FILE).exists() {
+                    let password = rpassword::prompt_password("Введите мастер-пароль: ")?;
+                    let vault = Vault::new(&password)?;
+                    let config = vault.get_config();
+                    
+                    match config.auto_lock_timeout {
+                        Some(minutes) => {
+                            println!("⏰ Автоблокировка включена: {} минут", minutes);
+                        }
+                        None => {
+                            println!("🔓 Автоблокировка отключена");
+                        }
+                    }
+                } else {
+                    println!("📭 Хранилище не инициализировано");
+                }
+            } else if let Some(minutes) = timeout {
+                // Установить новую конфигурацию
+                if Path::new(VAULT_FILE).exists() {
+                    let password = rpassword::prompt_password("Введите мастер-пароль: ")?;
+                    let mut vault = Vault::new(&password)?;
+                    vault.set_auto_lock_timeout(Some(*minutes))?;
+                    println!("✅ Автоблокировка установлена на {} минут", minutes);
+                } else {
+                    println!("📭 Хранилище не инициализировано");
+                }
+            } else {
+                println!("❌ Укажите --timeout или --show");
+            }
+        }
+        
+        Commands::Unlock => {
+            if SessionManager::is_locked() {
+                let password = rpassword::prompt_password("Введите мастер-пароль для разблокировки: ")?;
+                let _vault = Vault::new(&password)?;
+                
+                // Простая проверка правильности пароля
+                if Path::new(VAULT_FILE).exists() {
+                    let mut test_vault = Vault::new(&password)?;
+                    match test_vault.load_from_file(Path::new(VAULT_FILE)) {
+                        Ok(_) => {
+                            SessionManager::unlock_session()?;
+                            println!("✅ Сессия разблокирована!");
+                        }
+                        Err(_) => {
+                            println!("❌ Неверный пароль");
+                        }
+                    }
+                } else {
+                    SessionManager::unlock_session()?;
+                    println!("✅ Сессия разблокирована!");
+                }
+            } else {
+                println!("🔓 Сессия не заблокирована");
             }
         }
     }

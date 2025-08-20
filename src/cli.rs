@@ -89,4 +89,16 @@ pub enum Commands {
         #[arg(short, long, default_value = "json")]
         format: String,
     },
+    /// Настройка автоблокировки
+    LockConfig {
+        /// Время до блокировки в минутах (0 для отключения)
+        #[arg(short, long)]
+        timeout: Option<u64>,
+        
+        /// Показать текущую конфигурацию
+        #[arg(short, long)]
+        show: bool,
+    },
+    /// Разблокировать сессию
+    Unlock,
 }
