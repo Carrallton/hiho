@@ -18,12 +18,26 @@ pub enum Commands {
         /// Имя пользователя
         #[arg(short, long)]
         username: String,
-        /// Пароль
+        /// Пароль (если не указан, будет сгенерирован)
         #[arg(short, long)]
-        password: String,
+        password: Option<String>,
+        
+        /// Длина пароля (если генерируем)
+        #[arg(long, default_value = "16")]
+        length: usize,
     },
     /// Показать все записи
     List,
     /// Инициализировать хранилище
     Init,
+    /// Сгенерировать пароль
+    Generate {
+        /// Длина пароля
+        #[arg(short, long, default_value = "16")]
+        length: usize,
+        
+        /// Использовать специальные символы
+        #[arg(short, long)]
+        secure: bool,
+    },
 }
