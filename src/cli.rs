@@ -50,4 +50,43 @@ pub enum Commands {
         /// Название сервиса или номер записи
         name_or_index: String,
     },
+    /// Поиск записей по части имени
+    Search {
+        /// Часть названия для поиска
+        query: String,
+    },
+    /// Редактировать запись
+    Edit {
+        /// Название сервиса или номер записи
+        name_or_index: String,
+        /// Новое имя пользователя
+        #[arg(short, long)]
+        username: Option<String>,
+        /// Новый пароль
+        #[arg(short, long)]
+        password: Option<String>,
+        /// Длина нового пароля (если генерируем)
+        #[arg(long, default_value = "16")]
+        length: usize,
+    },
+    /// Экспорт данных в файл
+    Export {
+        /// Путь к файлу для экспорта
+        #[arg(short, long, default_value = "hiho_export.json")]
+        file: String,
+        
+        /// Формат экспорта (json, csv)
+        #[arg(short, long, default_value = "json")]
+        format: String,
+    },
+    /// Импорт данных из файла
+    Import {
+        /// Путь к файлу для импорта
+        #[arg(short, long)]
+        file: String,
+        
+        /// Формат импорта (json, csv)
+        #[arg(short, long, default_value = "json")]
+        format: String,
+    },
 }

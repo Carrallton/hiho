@@ -48,7 +48,7 @@ impl Vault {
         &self.entries
     }
     
-    // Добавляем метод удаления
+    // Удаление записи
     pub fn remove_entry(&mut self, index: usize) -> Option<Entry> {
         if index < self.entries.len() {
             Some(self.entries.remove(index))
@@ -61,5 +61,41 @@ impl Vault {
     pub fn find_entry_by_name(&self, name: &str) -> Option<(usize, &Entry)> {
         self.entries.iter().enumerate()
             .find(|(_, entry)| entry.name == name)
+    }
+    
+    // Поиск записей по части имени (новый метод)
+    pub fn search_entries(&self, query: &str) -> Vec<(usize, &Entry)> {
+        self.entries.iter().enumerate()
+            .filter(|(_, entry)| {
+                entry.name.to_lowercase().contains(&query.to_lowercase())
+            })
+            .collect()
+    }
+    
+    // Получение записи по индексу
+    pub fn get_entry_by_index(&self, index: usize) -> Option<&Entry> {
+        self.entries.get(index)
+    }
+    
+    // Получение индекса записи по имени
+    pub fn get_index_by_name(&self, name: &str) -> Option<usize> {
+        self.entries.iter().position(|entry| entry.name == name)
+    }
+    
+    // Редактирование записи (новый метод)
+    pub fn edit_entry(&mut self, index: usize, username: Option<String>, password: Option<String>) -> Result<(), &'static str> {
+        if index >= self.entries.len() {
+            return Err("Запись не найдена");
+        }
+        
+        if let Some(new_username) = username {
+            self.entries[index].username = new_username;
+        }
+        
+        if let Some(new_password) = password {
+            self.entries[index].password = new_password;
+        }
+        
+        Ok(())
     }
 }
