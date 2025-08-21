@@ -1,134 +1,130 @@
 @echo off
 chcp 65001 >nul
-title Тестирование hiho - Менеджер паролей уровня NSA
+title Тестирование hiho CLI
 
 cls
-echo ╔══════════════════════════════════════════════════════════════╗
-echo ║                    🧪 ТЕСТИРОВАНИЕ HIHO                    ║
-echo ║              Менеджер паролей уровня NSA/Pentagon           ║
-echo ╚══════════════════════════════════════════════════════════════╝
+echo ╔════════════════════════════════════════════════╗
+echo ║           🧪 ТЕСТИРОВАНИЕ HIHO CLI            ║
+echo ╚════════════════════════════════════════════════╝
 echo.
 
-:: Проверка наличия Rust и Cargo
-where cargo >nul 2>nul
-if %errorlevel% neq 0 (
-    echo ❌ Ошибка: Rust и Cargo не найдены!
-    echo    Установите Rust с https://www.rust-lang.org/
-    echo.
-    pause
-    exit /b 1
-)
+:: Очистка предыдущих данных
+if exist data rmdir /s /q data >nul
+if exist test_results.txt del test_results.txt >nul
 
-echo ✅ Rust и Cargo найдены
-echo.
+set TEST_PASSWORD=TestMasterPassword123!
+set TEST_COUNT=0
+set PASS_COUNT=0
 
-:: Создание временной папки для тестов
-set TEST_DIR=%TEMP%\hiho_test_%RANDOM%
-mkdir "%TEST_DIR%" >nul 2>nul
-echo 📁 Создана временная папка для тестов: %TEST_DIR%
-echo.
-
-:: Переход во временную папку
-cd /d "%TEST_DIR%"
-
-:: Копирование исходного кода (предполагаем, что скрипт запускается из корня проекта)
-echo 📂 Копирование исходного кода...
-xcopy "%~dp0src" "src\" /E /I /Q >nul 2>nul
-copy "%~dp0Cargo.toml" . >nul 2>nul
-copy "%~dp0Cargo.lock" . >nul 2>nul
-
-echo ✅ Исходный код скопирован
-echo.
-
-:: Сборка проекта
-echo 🔧 Сборка проекта...
-cargo build --release > build_log.txt 2>&1
-if %errorlevel% neq 0 (
-    echo ❌ Ошибка сборки!
-    type build_log.txt
-    echo.
-    pause
-    exit /b 1
-)
-
-echo ✅ Проект успешно собран
-echo.
-
-:: Путь к исполняемому файлу
-set HIHO_EXE=%TEST_DIR%\target\release\hiho.exe
-
-:: Тест 1: Инициализация хранилища
-echo 🔐 Тест 1: Инициализация хранилища
-echo Тестовый мастер-пароль: TestMasterPassword123!
-echo TestMasterPassword123! | "%HIHO_EXE%" init
-if %errorlevel% equ 0 (
-    echo ✅ Тест 1 пройден: Хранилище инициализировано
+:: Функция для логгирования
+:log_result
+if "%~1"=="PASS" (
+    set /a PASS_COUNT+=1
+    echo ✅ %~2
+    echo ✅ %~2 >> test_results.txt
 ) else (
-    echo ❌ Тест 1 провален: Ошибка инициализации
+    echo ❌ %~2
+    echo ❌ %~2 >> test_results.txt
 )
-echo.
+set /a TEST_COUNT+=1
+goto :eof
+
+:: Тест 1: Инициализация
+echo 🔐 Тест 1: Инициализация хранилища
+echo %TEST_PASSWORD% | hiho.exe init >nul 2>&1
+if %errorlevel% equ 0 (
+    call :log_result PASS "Инициализация хранилища"
+) else (
+    call :log_result FAIL "Инициализация хранилища"
+)
 
 :: Тест 2: Добавление записей
 echo ➕ Тест 2: Добавление записей
-echo TestMasterPassword123! | "%HIHO_EXE%" add -n "github.com" -u "developer@github.com" -p "MyGitHubPass123!"
+echo %TEST_PASSWORD% | hiho.exe add -n "github.com" -u "dev@github.com" -p "MyGitHubPass123!" >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Тест 2.1: Запись github.com добавлена
+    call :log_result PASS "Добавление записи github.com"
 ) else (
-    echo ❌ Тест 2.1: Ошибка добавления записи github.com
+    call :log_result FAIL "Добавление записи github.com"
 )
 
-echo TestMasterPassword123! | "%HIHO_EXE%" add -n "google.com" -u "user@gmail.com" --length 16
+echo %TEST_PASSWORD% | hiho.exe add -n "google.com" -u "user@gmail.com" --length 16 >nul 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Тест 2.2: Запись google.com добавлена
+    call :log_result PASS "Добавление записи google.com с автогенерацией"
 ) else (
-    echo ❌ Тест 2.2: Ошибка добавления записи google.com
+    call :log_result FAIL "Добавление записи google.com с автогенерацией"
 )
-echo.
 
 :: Тест 3: Просмотр записей
 echo 📋 Тест 3: Просмотр записей
-echo TestMasterPassword123! | "%HIHO_EXE%" list
+echo %TEST_PASSWORD% | hiho.exe list > test_output.txt 2>&1
+findstr /C:"github.com" test_output.txt >nul
 if %errorlevel% equ 0 (
-    echo ✅ Тест 3: Записи отображены
+    call :log_result PASS "Просмотр записей"
 ) else (
-    echo ❌ Тест 3: Ошибка отображения записей
-)
-echo.
-
-:: Тест 4: Генерация паролей
-echo 🔤 Тест 4: Генерация паролей
-"%HIHO_EXE%" generate --length 12
-if %errorlevel% equ 0 (
-    echo ✅ Тест 4.1: Простой пароль сгенерирован
-) else (
-    echo ❌ Тест 4.1: Ошибка генерации простого пароля
+    call :log_result FAIL "Просмотр записей"
 )
 
-"%HIHO_EXE%" generate --length 16 --secure
+:: Тест 4: Поиск записей
+echo 🔍 Тест 4: Поиск записей
+echo %TEST_PASSWORD% | hiho.exe search "git" > test_output.txt 2>&1
+findstr /C:"github.com" test_output.txt >nul
 if %errorlevel% equ 0 (
-    echo ✅ Тест 4.2: Безопасный пароль сгенерирован
+    call :log_result PASS "Поиск записей"
 ) else (
-    echo ❌ Тест 4.2: Ошибка генерации безопасного пароля
+    call :log_result FAIL "Поиск записей"
 )
-echo.
 
-:: Тест 5: Копирование в буфер обмена
-echo 📋 Тест 5: Копирование в буфер обмена
-echo TestMasterPassword123! | "%HIHO_EXE%" copy 1
+:: Тест 5: Генерация паролей
+echo 🔤 Тест 5: Генерация паролей
+hiho.exe generate --length 12 > test_output.txt 2>&1
 if %errorlevel% equ 0 (
-    echo ✅ Тест 5: Пароль скопирован в буфер обмена
+    call :log_result PASS "Генерация простого пароля"
 ) else (
-    echo ❌ Тест 5: Ошибка копирования в буфер обмена
+    call :log_result FAIL "Генерация простого пароля"
 )
+
+hiho.exe generate --length 16 --secure > test_output.txt 2>&1
+if %errorlevel% equ 0 (
+    call :log_result PASS "Генерация безопасного пароля"
+) else (
+    call :log_result FAIL "Генерация безопасного пароля"
+)
+
+:: Тест 6: Экспорт данных
+echo 📤 Тест 6: Экспорт данных
+echo %TEST_PASSWORD% | hiho.exe export --file test_export.json >nul 2>&1
+if exist test_export.json (
+    call :log_result PASS "Экспорт в JSON"
+) else (
+    call :log_result FAIL "Экспорт в JSON"
+)
+
+:: Тест 7: Конфигурация автоблокировки
+echo ⏰ Тест 7: Конфигурация автоблокировки
+echo %TEST_PASSWORD% | hiho.exe lock-config --timeout 5 >nul 2>&1
+if %errorlevel% equ 0 (
+    call :log_result PASS "Настройка автоблокировки"
+) else (
+    call :log_result FAIL "Настройка автоблокировки"
+)
+
+:: Вывод результатов
+echo.
+echo ╔════════════════════════════════════════════════╗
+echo ║              📊 РЕЗУЛЬТАТЫ ТЕСТОВ              ║
+echo ╚════════════════════════════════════════════════╝
+echo Пройдено: %PASS_COUNT%/%TEST_COUNT%
 echo.
 
-:: Информация о результатах
-echo 📊 РЕЗУЛЬТАТЫ ТЕСТИРОВАНИЯ:
-echo    ✅ Все основные функции работают
-echo    📁 Тестовые данные сохранены в: %TEST_DIR%
-echo    🗑️  Для очистки выполните: rmdir /s "%TEST_DIR%"
+if %PASS_COUNT% equ %TEST_COUNT% (
+    echo 🎉 Все тесты пройдены успешно!
+) else (
+    echo ⚠️  Некоторые тесты не пройдены
+)
+
+echo.
+echo 📁 Тестовые данные сохранены в папке test_hiho
+echo 📄 Подробные результаты в test_results.txt
 echo.
 
-echo 🎉 Тестирование завершено!
-echo.
 pause

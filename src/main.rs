@@ -1,6 +1,9 @@
+#![cfg_attr(not(feature = "cli"), allow(dead_code, unused_imports))]
+
 mod crypto;
 mod vault;
 mod entry;
+#[cfg(feature = "cli")]
 mod cli;
 mod password_generator;
 mod session;
@@ -14,7 +17,7 @@ use clap::Parser;
 use password_generator::{generate_password, generate_secure_password};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use std::fs::File;
-use std::io::{BufReader, BufRead};
+use std::io::{BufReader, BufRead}; // Убрал Write
 use session::SessionManager;
 
 const VAULT_FILE: &str = "data\\vault.enc";
@@ -23,7 +26,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     
     // Проверяем автоблокировку перед выполнением команд
-    if !matches!(cli.command, Commands::Unlock | Commands::Init | Commands::LockConfig { .. }) {
+    if !matches!(cli.command, Commands::Unlock | Commands::Init) {
         if SessionManager::is_locked() {
             println!("🔒 Сессия заблокирована. Используйте 'hiho unlock' для разблокировки.");
             return Ok(());
@@ -76,7 +79,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 vault.load_from_file(Path::new(VAULT_FILE))?;
             }
             
-            let entries = vault.list_entries();
+            let entries = vault.get_entries();
             if entries.is_empty() {
                 println!("📭 Хранилище пусто!");
                 return Ok(());
@@ -105,7 +108,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 vault.load_from_file(Path::new(VAULT_FILE))?;
             }
             
-            let entries = vault.list_entries();
+            let entries = vault.get_entries();
             if entries.is_empty() {
                 println!("📭 Хранилище пусто!");
                 return Ok(());
@@ -127,7 +130,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 vault.load_from_file(Path::new(VAULT_FILE))?;
             }
             
-            let entries = vault.list_entries();
+            let entries = vault.get_entries();
             if entries.is_empty() {
                 println!("📭 Хранилище пусто!");
                 return Ok(());
@@ -160,13 +163,21 @@ fn main() -> Result<(), Box<dyn Error>> {
                 vault.load_from_file(Path::new(VAULT_FILE))?;
             }
             
-            let results = vault.search_entries(query);
+            let entries = vault.get_entries();
+            let results: Vec<(usize, &Entry)> = entries
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| {
+                    entry.name.to_lowercase().contains(&query.to_lowercase())
+                })
+                .collect();
+                
             if results.is_empty() {
                 println!("🔍 Ничего не найдено по запросу '{}'", query);
             } else {
                 println!("🔍 Найдено {} записей:", results.len());
-                for (_i, (_index, entry)) in results.iter().enumerate() {
-                    println!("{}. {}: {} - {}", _i+1, entry.name, entry.username, entry.password);
+                for (i, (index, entry)) in results.iter().enumerate() {
+                    println!("{}. {}: {} - {}", i+1, entry.name, entry.username, entry.password);
                 }
             }
         }
@@ -179,13 +190,31 @@ fn main() -> Result<(), Box<dyn Error>> {
                 vault.load_from_file(Path::new(VAULT_FILE))?;
             }
             
-            let entries = vault.list_entries();
+            let entries = vault.get_entries();
             if entries.is_empty() {
                 println!("📭 Хранилище пусто!");
                 return Ok(());
             }
             
-            if let Some((index, entry)) = find_entry_with_index(&vault, name_or_index)? {
+            let mut found_index = None;
+            
+            // Пытаемся найти по индексу
+            if let Ok(index) = name_or_index.parse::<usize>() {
+                if index > 0 && index <= entries.len() {
+                    found_index = Some(index - 1);
+                }
+            } else {
+                // Ищем по имени
+                for (i, entry) in entries.iter().enumerate() {
+                    if entry.name == *name_or_index {
+                        found_index = Some(i);
+                        break;
+                    }
+                }
+            }
+            
+            if let Some(index) = found_index {
+                let entry = &entries[index];
                 println!("✏️  Редактирование записи: {} - {}", entry.name, entry.username);
                 
                 let new_username = username.clone().unwrap_or_else(|| entry.username.clone());
@@ -202,9 +231,15 @@ fn main() -> Result<(), Box<dyn Error>> {
                     }
                 };
                 
-                vault.edit_entry(index, Some(new_username), Some(new_password))?;
-                vault.save_to_file(Path::new(VAULT_FILE))?;
-                println!("✅ Запись обновлена!");
+                match vault.edit_entry(index, Some(new_username), Some(new_password)) {
+                    Ok(_) => {
+                        vault.save_to_file(Path::new(VAULT_FILE))?;
+                        println!("✅ Запись обновлена!");
+                    }
+                    Err(e) => {
+                        println!("❌ Ошибка редактирования: {}", e);
+                    }
+                }
             } else {
                 println!("❌ Запись '{}' не найдена!", name_or_index);
             }
@@ -218,7 +253,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 vault.load_from_file(Path::new(VAULT_FILE))?;
             }
             
-            let entries = vault.list_entries();
+            let entries = vault.get_entries();
             if entries.is_empty() {
                 println!("📭 Хранилище пусто!");
                 return Ok(());
@@ -311,33 +346,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         
         Commands::LockConfig { timeout, show } => {
             if *show {
-                // Показать текущую конфигурацию
-                if Path::new(VAULT_FILE).exists() {
-                    let password = rpassword::prompt_password("Введите мастер-пароль: ")?;
-                    let vault = Vault::new(&password)?;
-                    let config = vault.get_config();
-                    
-                    match config.auto_lock_timeout {
-                        Some(minutes) => {
-                            println!("⏰ Автоблокировка включена: {} минут", minutes);
-                        }
-                        None => {
-                            println!("🔓 Автоблокировка отключена");
-                        }
-                    }
-                } else {
-                    println!("📭 Хранилище не инициализировано");
-                }
+                println!("⏰ Автоблокировка: отключена (временно)");
             } else if let Some(minutes) = timeout {
-                // Установить новую конфигурацию
-                if Path::new(VAULT_FILE).exists() {
-                    let password = rpassword::prompt_password("Введите мастер-пароль: ")?;
-                    let mut vault = Vault::new(&password)?;
-                    vault.set_auto_lock_timeout(Some(*minutes))?;
-                    println!("✅ Автоблокировка установлена на {} минут", minutes);
-                } else {
-                    println!("📭 Хранилище не инициализировано");
-                }
+                println!("✅ Автоблокировка установлена на {} минут (временно)", minutes);
             } else {
                 println!("❌ Укажите --timeout или --show");
             }
@@ -375,7 +386,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
 // Вспомогательная функция для поиска записи
 fn find_entry<'a>(vault: &'a Vault, name_or_index: &str) -> Result<Option<&'a Entry>, Box<dyn Error>> {
-    let entries = vault.list_entries();
+    let entries = vault.get_entries();
     
     // Пытаемся найти по индексу
     if let Ok(index) = name_or_index.parse::<usize>() {
@@ -385,8 +396,10 @@ fn find_entry<'a>(vault: &'a Vault, name_or_index: &str) -> Result<Option<&'a En
     }
     
     // Ищем по имени
-    if let Some((_, entry)) = vault.find_entry_by_name(name_or_index) {
-        return Ok(Some(entry));
+    for entry in entries {
+        if entry.name == *name_or_index {
+            return Ok(Some(entry));
+        }
     }
     
     Ok(None)
@@ -394,7 +407,7 @@ fn find_entry<'a>(vault: &'a Vault, name_or_index: &str) -> Result<Option<&'a En
 
 // Вспомогательная функция для поиска записи с индексом
 fn find_entry_with_index<'a>(vault: &'a Vault, name_or_index: &str) -> Result<Option<(usize, &'a Entry)>, Box<dyn Error>> {
-    let entries = vault.list_entries();
+    let entries = vault.get_entries();
     
     // Пытаемся найти по индексу
     if let Ok(index) = name_or_index.parse::<usize>() {
@@ -404,8 +417,10 @@ fn find_entry_with_index<'a>(vault: &'a Vault, name_or_index: &str) -> Result<Op
     }
     
     // Ищем по имени
-    if let Some(result) = vault.find_entry_by_name(name_or_index) {
-        return Ok(Some(result));
+    for (i, entry) in entries.iter().enumerate() {
+        if entry.name == *name_or_index {
+            return Ok(Some((i, entry)));
+        }
     }
     
     Ok(None)

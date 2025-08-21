@@ -7,7 +7,7 @@ use std::error::Error;
 type Aes256CbcEnc = cbc::Encryptor<aes::Aes256>;
 type Aes256CbcDec = cbc::Decryptor<aes::Aes256>;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct EncryptedData {
     pub ciphertext: Vec<u8>,
     pub iv: [u8; 16],
@@ -20,12 +20,14 @@ pub fn derive_key(password: &str, salt: &str) -> Result<[u8; 32], Box<dyn Error>
         Params::default(),
     );
     let salt = SaltString::encode_b64(salt.as_bytes())
-        .map_err(|e| format!("Salt error: {}", e))?;
+        .map_err(|e| format!("Salt encoding error: {}", e))?;
+    
     let hash = argon2.hash_password(password.as_bytes(), &salt)
-        .map_err(|e| format!("Hash error: {}", e))?;
+        .map_err(|e| format!("Password hashing error: {}", e))?;
+    
     let key: [u8; 32] = hash.hash.ok_or("Hash is None")?
         .as_bytes()[..32].try_into()
-        .map_err(|_| "Key length error")?;
+        .map_err(|_| "Key conversion error")?;
     Ok(key)
 }
 
@@ -34,12 +36,14 @@ pub fn encrypt(data: &[u8], key: &[u8; 32]) -> Result<EncryptedData, Box<dyn Err
     rand::thread_rng().fill_bytes(&mut iv);
     
     let cipher = Aes256CbcEnc::new_from_slices(key, &iv)
-        .map_err(|_| "Cipher init error")?;
+        .map_err(|e| format!("Cipher creation error: {}", e))?;
     
-    // Создаем буфер для шифрования
-    let mut buffer = data.to_vec();
+    // Создаем буфер с запасом для padding
+    let mut buffer = vec![0u8; data.len() + 16];
+    buffer[..data.len()].copy_from_slice(data);
+    
     let ciphertext = cipher.encrypt_padded_mut::<Pkcs7>(&mut buffer, data.len())
-        .map_err(|_| "Encryption error")?
+        .map_err(|e| format!("Encryption error: {}", e))?
         .to_vec();
     
     Ok(EncryptedData { ciphertext, iv })
@@ -47,12 +51,13 @@ pub fn encrypt(data: &[u8], key: &[u8; 32]) -> Result<EncryptedData, Box<dyn Err
 
 pub fn decrypt(encrypted: &EncryptedData, key: &[u8; 32]) -> Result<Vec<u8>, Box<dyn Error>> {
     let cipher = Aes256CbcDec::new_from_slices(key, &encrypted.iv)
-        .map_err(|_| "Cipher init error")?;
+        .map_err(|e| format!("Cipher creation error: {}", e))?;
     
     // Создаем буфер для дешифрования
     let mut buffer = encrypted.ciphertext.clone();
+    
     let plaintext = cipher.decrypt_padded_mut::<Pkcs7>(&mut buffer)
-        .map_err(|_| "Decryption error")?
+        .map_err(|e| format!("Decryption error (possibly wrong password): {}", e))?
         .to_vec();
     
     Ok(plaintext)
