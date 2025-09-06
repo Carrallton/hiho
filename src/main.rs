@@ -7,6 +7,7 @@ mod entry;
 mod cli;
 mod password_generator;
 mod session;
+mod auto_lock;
 
 use cli::{Cli, Commands};
 use entry::Entry;
@@ -19,15 +20,34 @@ use clipboard::{ClipboardContext, ClipboardProvider};
 use std::fs::File;
 use std::io::{BufReader, BufRead}; // Убрал Write
 use session::SessionManager;
+use auto_lock::AutoLockManager;
 
 const VAULT_FILE: &str = "data\\vault.enc";
 
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     
-    // Проверяем автоблокировку перед выполнением команд
     if !matches!(cli.command, Commands::Unlock | Commands::Init) {
-        if SessionManager::is_locked() {
+        // Проверяем автоматическую блокировку
+        match AutoLockManager::should_lock() {
+            Ok(true) => {
+                AutoLockManager::lock_session()?;
+                println!("🔒 Сессия автоматически заблокирована по таймеру");
+                println!("Используйте 'hiho unlock' для разблокировки");
+                return Ok(());
+            }
+            Ok(false) => {
+                // Обновляем активность если не нужно блокировать
+                let _ = AutoLockManager::update_activity();
+            }
+            Err(_) => {
+                // Ошибка проверки, но продолжаем
+                let _ = AutoLockManager::update_activity();
+            }
+        }
+        
+        // Проверяем принудительную блокировку
+        if AutoLockManager::is_locked() {
             println!("🔒 Сессия заблокирована. Используйте 'hiho unlock' для разблокировки.");
             return Ok(());
         }
@@ -352,27 +372,40 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         
-        Commands::LockConfig { timeout, show } => {
+        Commands::AutoLock { timeout, show } => {
             if *show {
-                println!("⏰ Автоблокировка: отключена (временно)");
+                let config = AutoLockManager::get_config()?;
+                match config.timeout_minutes {
+                    Some(minutes) => {
+                        println!("⏰ Автоблокировка включена: {} минут", minutes);
+                    }
+                    None => {
+                        println!("🔓 Автоблокировка отключена");
+                    }
+                }
             } else if let Some(minutes) = timeout {
-                println!("✅ Автоблокировка установлена на {} минут (временно)", minutes);
+                AutoLockManager::set_timeout(Some(*minutes))?;
+                if *minutes == 0 {
+                    println!("🔓 Автоблокировка отключена");
+                } else {
+                    println!("✅ Автоблокировка установлена на {} минут", minutes);
+                }
             } else {
                 println!("❌ Укажите --timeout или --show");
             }
         }
         
         Commands::Unlock => {
-            if SessionManager::is_locked() {
+            if AutoLockManager::is_locked() {
                 let password = rpassword::prompt_password("Введите мастер-пароль для разблокировки: ")?;
-                let _vault = Vault::new(&password)?;
-                
                 // Простая проверка правильности пароля
+                let vault = Vault::new(&password)?;
+                
                 if Path::new(VAULT_FILE).exists() {
                     let mut test_vault = Vault::new(&password)?;
                     match test_vault.load_from_file(Path::new(VAULT_FILE)) {
                         Ok(_) => {
-                            SessionManager::unlock_session()?;
+                            AutoLockManager::unlock()?;
                             println!("✅ Сессия разблокирована!");
                         }
                         Err(_) => {
@@ -380,7 +413,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         }
                     }
                 } else {
-                    SessionManager::unlock_session()?;
+                    AutoLockManager::unlock()?;
                     println!("✅ Сессия разблокирована!");
                 }
             } else {

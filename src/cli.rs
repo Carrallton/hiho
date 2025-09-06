@@ -2,7 +2,7 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "hiho")]
-#[command(about = "Менеджер паролей уровня NSA", version = "0.1")]
+#[command(about = "Менеджер паролей уровня NSA", version = "0.1.1")]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -90,7 +90,7 @@ pub enum Commands {
         format: String,
     },
     /// Настройка автоблокировки
-    LockConfig {
+    AutoLock {
         /// Время до блокировки в минутах (0 для отключения)
         #[arg(short, long)]
         timeout: Option<u64>,

@@ -1,6 +1,7 @@
 use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::path::Path;
+use hiho::AutoLockManager;
 
 // Импортируем настоящие структуры из нашего крейта
 use hiho::{Vault, Entry};
@@ -158,6 +159,29 @@ impl HihoApp {
     }
 
     fn show_main_screen(&mut self, ui: &mut egui::Ui) {
+        // Проверяем автоблокировку только при необходимости
+    match AutoLockManager::should_lock() {
+        Ok(true) => {
+            // Нужно заблокировать сессию
+            let _ = AutoLockManager::lock_session();
+            self.state = AppState::Locked;
+            return;
+        }
+        Ok(false) => {
+            // Продолжаем работу, обновляем активность
+            let _ = AutoLockManager::update_activity();
+        }
+        Err(_) => {
+            // Ошибка проверки, но продолжаем работу
+            let _ = AutoLockManager::update_activity();
+        }
+    }
+    
+    // Проверяем принудительную блокировку
+    if AutoLockManager::is_locked() {
+        self.state = AppState::Locked;
+        return;
+    }
         // Верхняя панель
         ui.horizontal(|ui| {
             if ui.button("🚪 Выйти").clicked() {
@@ -357,6 +381,14 @@ impl HihoApp {
             
             if ui.button("🔓 Разблокировать").clicked() {
                 self.state = AppState::Login;
+            }
+            
+            // Показываем время до автоблокировки
+            if let Ok(config) = AutoLockManager::get_config() {
+                if let Some(minutes) = config.timeout_minutes {
+                    ui.add_space(20.0);
+                    ui.label(format!("⏰ Автоблокировка через {} минут", minutes));
+                }
             }
         });
     }
