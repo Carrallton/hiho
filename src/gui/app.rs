@@ -747,32 +747,39 @@ impl HihoApp {
     }
 
     fn create_vault(&mut self) {
-        if self.master_password.is_empty() {
-            self.error_message = Some("Введите мастер-пароль для создания хранилища".to_string());
-            return;
-        }
+    if self.master_password.is_empty() {
+        self.error_message = Some("Введите мастер-пароль для создания хранилища".to_string());
+        return;
+    }
 
-        match Vault::new(&self.master_password) {
-            Ok(vault) => {
-                // Создаем директорию если её нет
-                std::fs::create_dir_all("data").unwrap_or_default();
-                
-                let vault_path = Path::new("data\\vault.enc");
-                match vault.save_to_file(vault_path) {
-                    Ok(_) => {
-                        self.vault = Some(Arc::new(Mutex::new(vault)));
-                        self.state = AppState::Main;
-                        self.error_message = None;
-                        self.entries = Vec::new();
-                    }
-                    Err(e) => {
-                        self.error_message = Some(format!("Ошибка создания хранилища: {}", e));
-                    }
+    let vault_path = Path::new("data\\vault.enc");
+    
+    // Проверяем, существует ли уже хранилище
+    if vault_path.exists() {
+        self.error_message = Some("❌ Хранилище уже существует! Используйте 'Войти'".to_string());
+        return;
+    }
+
+    match Vault::new(&self.master_password) {
+        Ok(vault) => {
+            // Создаем директорию если её нет
+            std::fs::create_dir_all("data").unwrap_or_default();
+            
+            match vault.save_to_file(vault_path) {
+                Ok(_) => {
+                    self.vault = Some(Arc::new(Mutex::new(vault)));
+                    self.state = AppState::Main;
+                    self.error_message = Some("✅ Хранилище создано!".to_string());
+                    self.entries = Vec::new();
+                }
+                Err(e) => {
+                    self.error_message = Some(format!("❌ Ошибка создания хранилища: {}", e));
                 }
             }
-            Err(e) => {
-                self.error_message = Some(format!("Ошибка инициализации: {}", e));
-            }
+        }
+        Err(e) => {
+            self.error_message = Some(format!("❌ Ошибка инициализации: {}", e));
         }
     }
+}
 }

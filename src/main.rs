@@ -35,15 +35,23 @@ fn main() -> Result<(), Box<dyn Error>> {
     
     match &cli.command {
         Commands::Init => {
+            let vault_path = Path::new(VAULT_FILE);
+            
+            // Проверяем, существует ли уже хранилище
+            if vault_path.exists() {
+                println!("❌ Хранилище уже существует!");
+                println!("Используйте существующее хранилище или удалите файл {} для создания нового", VAULT_FILE);
+                return Ok(());
+            }
+            
             println!("🔐 Инициализация хранилища hiho...");
             let password = rpassword::prompt_password("Введите мастер-пароль: ")?;
             let vault = Vault::new(&password)?;
             
             std::fs::create_dir_all("data")?;
-            vault.save_to_file(Path::new(VAULT_FILE))?;
+            vault.save_to_file(vault_path)?;
             println!("✅ Хранилище создано!");
         }
-        
         Commands::Add { name, username, password, length } => {
             let master_password = rpassword::prompt_password("Введите мастер-пароль: ")?;
             let mut vault = Vault::new(&master_password)?;
