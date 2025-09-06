@@ -1,6 +1,6 @@
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::SystemTime;
 use serde::{Deserialize, Serialize};
 
 const ACTIVITY_FILE: &str = "data\\activity.log";

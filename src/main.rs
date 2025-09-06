@@ -8,6 +8,7 @@ mod cli;
 mod password_generator;
 mod session;
 mod auto_lock;
+mod biometric;
 
 use cli::{Cli, Commands};
 use entry::Entry;
@@ -18,9 +19,9 @@ use clap::Parser;
 use password_generator::{generate_password, generate_secure_password};
 use clipboard::{ClipboardContext, ClipboardProvider};
 use std::fs::File;
-use std::io::{BufReader, BufRead}; // Убрал Write
-use session::SessionManager;
+use std::io::{BufReader, BufRead};
 use auto_lock::AutoLockManager;
+use biometric::BiometricManager;
 
 const VAULT_FILE: &str = "data\\vault.enc";
 
@@ -183,6 +184,58 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
         }
         
+        Commands::Biometric { enable, disable, status, test } => {
+                if *status {
+                    let config = BiometricManager::get_config()?;
+                    println!("📊 Статус биометрической аутентификации:");
+                    println!("   Включена: {}", if config.enabled { "✅ Да" } else { "❌ Нет" });
+                    println!("   Платформа: {}", config.platform);
+                    println!("   Доступна: {}", if BiometricManager::is_available() { "✅ Да" } else { "❌ Нет" });
+                } else if *enable {
+                    if BiometricManager::is_available() {
+                        match BiometricManager::enable_biometric() {
+                            Ok(_) => {
+                                println!("✅ Биометрическая аутентификация включена");
+                                println!("💡 Теперь вы можете использовать биометрию для входа");
+                            }
+                            Err(e) => {
+                                println!("❌ Ошибка включения биометрии: {}", e);
+                            }
+                        }
+                    } else {
+                        println!("❌ Биометрическая аутентификация недоступна на этой платформе");
+                    }
+                } else if *disable {
+                    match BiometricManager::disable_biometric() {
+                        Ok(_) => {
+                            println!("🔓 Биометрическая аутентификация отключена");
+                        }
+                        Err(e) => {
+                            println!("❌ Ошибка отключения биометрии: {}", e);
+                        }
+                    }
+                } else if *test {
+                    if BiometricManager::is_available() {
+                        println!("🧪 Тестирование биометрической аутентификации...");
+                        match BiometricManager::authenticate("Подтвердите свою личность") {
+                            Ok(true) => {
+                                println!("✅ Биометрическая аутентификация успешна!");
+                            }
+                            Ok(false) => {
+                                println!("❌ Биометрическая аутентификация отклонена");
+                            }
+                            Err(e) => {
+                                println!("❌ Ошибка биометрической аутентификации: {}", e);
+                            }
+                        }
+                    } else {
+                        println!("❌ Биометрическая аутентификация недоступна");
+                    }
+                } else {
+                    println!("❌ Укажите один из параметров: --enable, --disable, --status, --test");
+                }
+            }
+
         Commands::Search { query } => {
             let master_password = rpassword::prompt_password("Введите мастер-пароль: ")?;
             let mut vault = Vault::new(&master_password)?;

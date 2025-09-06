@@ -2,6 +2,7 @@ use eframe::egui;
 use std::sync::{Arc, Mutex};
 use std::path::Path;
 use hiho::AutoLockManager;
+use hiho::BiometricManager;
 
 // Импортируем настоящие структуры из нашего крейта
 use hiho::{Vault, Entry};
@@ -14,6 +15,7 @@ pub enum AppState {
     EditEntry(usize),
     PasswordGenerator,
     Locked,
+    BiometricSetup,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,10 +67,22 @@ pub struct HihoApp {
     
     // Новые поля для генератора паролей
     pub password_options: PasswordOptions,
+    
+    // Поля для биометрии
+    pub biometric_available: bool,
+    pub biometric_enabled: bool,
+    pub show_biometric_prompt: bool,
 }
 
 impl Default for HihoApp {
     fn default() -> Self {
+        let biometric_available = BiometricManager::is_available();
+        let biometric_enabled = if let Ok(config) = BiometricManager::get_config() {
+            config.enabled
+        } else {
+            false
+        };
+
         Self {
             state: AppState::Login,
             vault: None,
@@ -83,9 +97,12 @@ impl Default for HihoApp {
             form_password: String::new(),
             show_password_generator: false,
             generated_password: String::new(),
-            
-            // Новые поля
+    
             password_options: PasswordOptions::default(),
+
+            biometric_available,
+            biometric_enabled,
+            show_biometric_prompt: false,
         }
     }
 }
@@ -112,6 +129,9 @@ impl eframe::App for HihoApp {
                 AppState::Locked => {
                     self.show_locked_screen(ui);
                 }
+                AppState::BiometricSetup => {
+                    self.show_biometric_setup(ui);
+                }
             }
             
             // Отображение ошибок
@@ -125,38 +145,46 @@ impl eframe::App for HihoApp {
 
 impl HihoApp {
     fn show_login_screen(&mut self, ui: &mut egui::Ui) {
-        ui.vertical_centered(|ui| {
-            ui.add_space(50.0);
-            ui.heading("🔐 hiho - Менеджер паролей уровня NSA");
-            ui.add_space(30.0);
-            
-            ui.horizontal(|ui| {
-                ui.label("🔑 Мастер-пароль:");
-                let password_field = ui.add(
-                    egui::TextEdit::singleline(&mut self.master_password)
-                        .password(true)
-                        .hint_text("Введите пароль")
-                        .desired_width(200.0)
-                );
-                
-                if password_field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                    self.attempt_login();
-                }
-            });
-            
+    ui.vertical_centered(|ui| {
+        ui.add_space(50.0);
+        ui.heading("🔐 hiho - Менеджер паролей уровня NSA");
+        ui.add_space(30.0);
+        
+        // Добавим кнопку биометрического входа если доступно:
+        if self.biometric_available && self.biometric_enabled {
+            if ui.button("👆 Войти с помощью биометрии").clicked() {
+                self.attempt_biometric_login();
+            }
             ui.add_space(20.0);
+        }
+        
+        ui.horizontal(|ui| {
+            ui.label("🔑 Мастер-пароль:");
+            let password_field = ui.add(
+                egui::TextEdit::singleline(&mut self.master_password)
+                    .password(true)
+                    .hint_text("Введите пароль")
+                    .desired_width(200.0)
+            );
             
-            ui.horizontal(|ui| {
-                if ui.button("🔓 Войти").clicked() {
-                    self.attempt_login();
-                }
-                
-                if ui.button("🆕 Создать хранилище").clicked() {
-                    self.create_vault();
-                }
-            });
+            if password_field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                self.attempt_login();
+            }
         });
-    }
+        
+        ui.add_space(20.0);
+        
+        ui.horizontal(|ui| {
+            if ui.button("🔓 Войти").clicked() {
+                self.attempt_login();
+            }
+            
+            if ui.button("🆕 Создать хранилище").clicked() {
+                self.create_vault();
+            }
+        });
+    });
+}
 
     fn show_main_screen(&mut self, ui: &mut egui::Ui) {
         // Проверяем автоблокировку только при необходимости
@@ -221,6 +249,34 @@ impl HihoApp {
                 self.show_entry_details(ui);
             });
         });
+
+        ui.horizontal(|ui| {
+        if ui.button("🚪 Выйти").clicked() {
+            self.state = AppState::Login;
+            self.master_password = String::new();
+            self.vault = None;
+            return;
+        }
+        
+        if ui.button("🔒 Заблокировать").clicked() {
+            self.state = AppState::Locked;
+            return;
+        }
+        
+        if ui.button("🎲 Генератор").clicked() {
+            self.state = AppState::PasswordGenerator;
+            return;
+        }
+        
+        if self.biometric_available && ui.button("🔐 Биометрия").clicked() {
+            self.state = AppState::BiometricSetup;
+            return;
+        }
+        
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+            ui.add(egui::TextEdit::singleline(&mut self.search_query).hint_text("🔍 Поиск..."));
+        });
+    });
     }
 
     fn show_entries_list(&mut self, ui: &mut egui::Ui) {
@@ -778,6 +834,47 @@ impl HihoApp {
         }
     }
 
+    fn show_biometric_setup(&mut self, ui: &mut egui::Ui) {
+        ui.vertical_centered(|ui| {
+            ui.add_space(50.0);
+            ui.heading("🔐 Биометрическая аутентификация");
+            ui.add_space(30.0);
+            
+            if self.biometric_available {
+                ui.label("✅ Биометрическая аутентификация доступна");
+                ui.add_space(20.0);
+                
+                ui.checkbox(&mut self.biometric_enabled, "Использовать биометрию для входа");
+                
+                ui.add_space(20.0);
+                if ui.button("🔄 Тестировать").clicked() {
+                    self.show_biometric_prompt = true;
+                }
+                
+                if self.show_biometric_prompt {
+                    ui.add_space(20.0);
+                    ui.label("👆 Приложите палец к сенсору...");
+                    
+                    // Здесь должна быть настоящая биометрическая аутентификация
+                    // Пока используем заглушку
+                    ui.add_space(10.0);
+                    if ui.button("✅ Имитировать успех").clicked() {
+                        self.show_biometric_prompt = false;
+                        self.error_message = Some("✅ Биометрия проверена успешно!".to_string());
+                    }
+                }
+            } else {
+                ui.label("❌ Биометрическая аутентификация недоступна");
+                ui.label("Убедитесь, что у вас есть Touch ID, Windows Hello или другой биометрический сенсор");
+            }
+            
+            ui.add_space(30.0);
+            if ui.button("🔙 Назад").clicked() {
+                self.state = AppState::Main;
+            }
+        });
+    }
+
     fn create_vault(&mut self) {
     if self.master_password.is_empty() {
         self.error_message = Some("Введите мастер-пароль для создания хранилища".to_string());
@@ -811,6 +908,45 @@ impl HihoApp {
         }
         Err(e) => {
             self.error_message = Some(format!("❌ Ошибка инициализации: {}", e));
+        }
+    }
+}
+fn attempt_biometric_login(&mut self) {
+    match BiometricManager::get_config() {
+        Ok(config) => {
+            if !config.enabled {
+                self.error_message = Some("Биометрия не включена".to_string());
+                return;
+            }
+            
+            if !BiometricManager::is_available() {
+                self.error_message = Some("Биометрия недоступна на этой платформе".to_string());
+                return;
+            }
+            
+            // Здесь должна быть настоящая биометрическая аутентификация
+            match BiometricManager::authenticate("Подтвердите личность для входа в hiho") {
+                Ok(true) => {
+                    self.error_message = Some("✅ Биометрический вход успешен!".to_string());
+                    self.state = AppState::Main;
+                    
+                    // Загружаем записи (имитация)
+                    if let Some(vault) = &self.vault {
+                        if let Ok(v_locked) = vault.lock() {
+                            self.entries = v_locked.get_entries().clone();
+                        }
+                    }
+                }
+                Ok(false) => {
+                    self.error_message = Some("❌ Биометрическая аутентификация отклонена".to_string());
+                }
+                Err(e) => {
+                    self.error_message = Some(format!("❌ Ошибка биометрии: {}", e));
+                }
+            }
+        }
+        Err(e) => {
+            self.error_message = Some(format!("❌ Ошибка настроек биометрии: {}", e));
         }
     }
 }

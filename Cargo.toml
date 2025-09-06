@@ -41,3 +41,15 @@ path = "src/main.rs"
 [[bin]]
 name = "hiho-gui"
 path = "src/gui/main.rs"
+
+# Windows зависимости (только для Windows)
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["winbase", "winnt"] }
+
+# macOS зависимости (только для macOS)
+[target.'cfg(macos)'.dependencies]
+security-framework = "2.0"
+
+# Linux зависимости (только для Linux)
+[target.'cfg(linux)'.dependencies]
+dbus = "0.9"
