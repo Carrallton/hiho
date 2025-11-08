@@ -257,7 +257,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("🔍 Ничего не найдено по запросу '{}'", query);
             } else {
                 println!("🔍 Найдено {} записей:", results.len());
-                for (i, (index, entry)) in results.iter().enumerate() {
+                for (i, (_, entry)) in results.iter().enumerate() {
                     println!("{}. {}: {} - {}", i+1, entry.name, entry.username, entry.password);
                 }
             }
@@ -452,7 +452,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             if AutoLockManager::is_locked() {
                 let password = rpassword::prompt_password("Введите мастер-пароль для разблокировки: ")?;
                 // Простая проверка правильности пароля
-                let vault = Vault::new(&password)?;
+                let _vault = Vault::new(&password)?;
                 
                 if Path::new(VAULT_FILE).exists() {
                     let mut test_vault = Vault::new(&password)?;

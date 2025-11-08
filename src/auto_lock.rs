@@ -104,11 +104,6 @@ impl AutoLockManager {
         Ok(())
     }
 
-    pub fn unlock_session() -> Result<(), Box<dyn std::error::Error>> {
-        crate::session::SessionManager::unlock_session()
-            .map_err(|e| format!("Ошибка разблокировки: {}", e).into())
-    }
-
     // Добавляем метод unlock
     pub fn unlock() -> Result<(), Box<dyn std::error::Error>> {
         crate::session::SessionManager::unlock_session()
